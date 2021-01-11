@@ -27,12 +27,26 @@ class ThreadedResolver(AbstractResolver):
     async def resolve(
         self, hostname: str, port: int = 0, family: int = socket.AF_INET
     ) -> List[Dict[str, Any]]:
+        # (Issue #5357) Need a workaround for loopback host addresses:
+        # The problem is that in glibc and Windows, AI_ADDRCONFIG applies the
+        # existence of an outgoing network interface to IP addresses of the
+        # loopback interface, due to a strict interpretation of the
+        # specification.  For example, if a computer does not have any
+        # outgoing IPv6 network interface, but its loopback network interface
+        # supports IPv6, a getaddrinfo call on "localhost" with AI_ADDRCONFIG
+        # won't return the IPv6 loopback address "::1", because getaddrinfo
+        # thinks the computer cannot connect to any IPv6 destination,
+        # ignoring the remote vs. local/loopback distinction.
+        flags = socket.AI_ADDRCONFIG if hostname not in (
+            "localhost", "localhost.localdomain",
+            "localhost6", "localhost6.localdomain6",
+        ) else 0
         infos = await self._loop.getaddrinfo(
             hostname,
             port,
             type=socket.SOCK_STREAM,
             family=family,
-            flags=socket.AI_ADDRCONFIG,
+            flags=flags,
         )
 
         hosts = []
